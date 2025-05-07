@@ -1,0 +1,47 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Copy index
+      run: |
+        cp index.html build/index.html
+
+    - name: Copy css
+      run: |
+        cp style.css build/style.css
+
+    - name: Copy js
+      run: |
+        cp logic.js build/logic.js
+
+    - name: Copy libs
+      run: |
+        cp pdf.min.js build/pdf.min.js
+        cp pdf.worker.min.js build/pdf.worker.min.js
+        cp pdf-lib.min.js build/pdf-lib.min.js
+
+    - name: Create .nojekyll
+      run: |
+        touch build/.nojekyll
+
+    - name: Deploy to build branch
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_branch: build
+        publish_dir: ./build
