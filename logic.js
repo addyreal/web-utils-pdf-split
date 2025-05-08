@@ -18,6 +18,7 @@ const action_button_trim = document.getElementById('action_button_trim');
 const action_button_split = document.getElementById('action_button_split');
 
 // Global
+var filename = "";
 var fileBuffer = null;
 var PDFDoc = null;
 var num_pages = 0;
@@ -259,12 +260,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
 pdf_input.onchange = async (e) =>
 {
 	// Disable UI (reset)
+	clearOutput(outputElement);
 	config_container.classList.add('hidden');
 	multipage_help.classList.add('hidden');
 
 	// Get file
     const file = e.target.files[0];
 	if (!file) return;
+
+	// Store filename
+	filename = file.name.replace(/\.pdf$/i, '');
 
 	// Get and copy file buffer
 	const arrBuffer = await file.arrayBuffer();
@@ -448,10 +453,6 @@ function action(split)
 		const {PDFDocument} = PDFLib;
 		const pdfDoc = await PDFDocument.load(fileBuffer);
 
-		// Conversion
-		const toPt = (px) => px * (72/CONST_DPI);
-		const toPx = (pt) => pt * (CONST_DPI/72);
-
 		// Loop through all pages and delete
 		for(let i = num_pages; i >= 1; i--)
 		{
@@ -463,9 +464,15 @@ function action(split)
 		}
 
 		// Split to single pages
-		if(split ==  true)
+		if(split == true)
 		{
 			const num = pdfDoc.getPageCount();
+			if(num == 0)
+			{
+				outputElement.value += "Aborting download of zero pages\n";
+				resizeOutput(outputElement);
+				return;
+			}
 			for (let i = 1; i <= num; i++)
 			{
 				const singlePage = await PDFDocument.create();
@@ -477,7 +484,7 @@ function action(split)
 				const blob = new Blob([pageBytes], {type: 'application/pdf'});
 				const link = document.createElement('a');
 				link.href = URL.createObjectURL(blob);
-				link.download = `page-${i}.pdf`;
+				link.download = filename + `-page-${i}` + '.pdf';
 				link.click();
 				URL.revokeObjectURL(link.href);
 			}
@@ -486,13 +493,27 @@ function action(split)
 		// Trim into one pdf
 		else
 		{
+			const num = pdfDoc.getPageCount();
+			if(num == 0)
+			{
+				outputElement.value += "Aborting download of zero pages\n";
+				resizeOutput(outputElement);
+				return;
+			}
+			else if(num == userSelection.total)
+			{
+				outputElement.value += "Aborting download of unchanged document\n";
+				resizeOutput(outputElement);
+				return;
+			}
+
 			newBytes = await pdfDoc.save();
 
 			// Make bob
 			const bob = new Blob([newBytes], {type: 'application/pdf'});
 			const link = document.createElement('a');
 			link.href = URL.createObjectURL(bob);
-			link.download = 'converted.pdf';
+			link.download = filename + '-trimmed' + '.pdf';
 			link.click();
 			URL.revokeObjectURL(link.href);
 		}
