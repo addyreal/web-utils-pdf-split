@@ -14,12 +14,14 @@ const multipage_help = document.getElementById('multipage_help');
 const multipage_prev = document.getElementById('multipage_prev');
 const multipage_next = document.getElementById('multipage_next');
 const multipage_count = document.getElementById('multipage_count');
-const action_button = document.getElementById('action_button');
+const action_button_trim = document.getElementById('action_button_trim');
+const action_button_split = document.getElementById('action_button_split');
 
 // Global
 var fileBuffer = null;
 var PDFDoc = null;
 var num_pages = 0;
+var renderInProgress = false;
 
 async function renderPDFPage(i)
 {
@@ -272,7 +274,9 @@ pdf_input.onchange = async (e) =>
 	PDFDoc = await pdfjsLib.getDocument({data: arrBuffer}).promise;
 
 	// Render 1st page
+	renderInProgress = true;
 	await renderPDFPage(1);
+	renderInProgress = false;
 
 	// Reset preview window
 	resetPreviewWindow();
@@ -409,29 +413,32 @@ _c_preview_hide.addEventListener('click', function()
 // Multipage previous page
 multipage_prev.addEventListener('click', async function()
 {
-	if(userSelection.current != 1)
+	if(userSelection.current != 1 && !renderInProgress)
 	{
+		renderInProgress = true;
 		userSelection.current -= 1;
 		await renderPDFPage(userSelection.current);
 		draw();
 		multipage_count.innerHTML = userSelection.current + '/' + userSelection.total;
+		renderInProgress = false;
 	}
 });
 
 // Multipage next page
 multipage_next.addEventListener('click', async function()
 {
-	if(userSelection.current != userSelection.total)
+	if(userSelection.current != userSelection.total && !renderInProgress)
 	{
+		renderInProgress = true;
 		userSelection.current += 1;
 		await renderPDFPage(userSelection.current);
 		draw();
 		multipage_count.innerHTML = userSelection.current + '/' + userSelection.total;
+		renderInProgress = false;
 	}
 });
 
-// Process
-action_button.addEventListener('click', function()
+function action(split)
 {
 	clearOutput(outputElement);
 	resizeOutput(outputElement);
@@ -455,15 +462,51 @@ action_button.addEventListener('click', function()
 			}
 		}
 
-		// Save the PDF
-		newBytes = await pdfDoc.save();
+		// Split to single pages
+		if(split ==  true)
+		{
+			const num = pdfDoc.getPageCount();
+			for (let i = 1; i <= num; i++)
+			{
+				const singlePage = await PDFDocument.create();
+				const [copy] = await singlePage.copyPages(pdfDoc, [i - 1]);
+				singlePage.addPage(copy);
+		
+				// Make blob
+				const pageBytes = await singlePage.save();
+				const blob = new Blob([pageBytes], {type: 'application/pdf'});
+				const link = document.createElement('a');
+				link.href = URL.createObjectURL(blob);
+				link.download = `page-${i}.pdf`;
+				link.click();
+				URL.revokeObjectURL(link.href);
+			}
 
-		// Make bob
-		const bob = new Blob([newBytes], {type: 'application/pdf'});
-		const link = document.createElement('a');
-		link.href = URL.createObjectURL(bob);
-		link.download = 'converted.pdf';
-		link.click();
-		URL.revokeObjectURL(link.href);
+		}
+		// Trim into one pdf
+		else
+		{
+			newBytes = await pdfDoc.save();
+
+			// Make bob
+			const bob = new Blob([newBytes], {type: 'application/pdf'});
+			const link = document.createElement('a');
+			link.href = URL.createObjectURL(bob);
+			link.download = 'converted.pdf';
+			link.click();
+			URL.revokeObjectURL(link.href);
+		}
 	})();
+}
+
+// Trim
+action_button_trim.addEventListener('click', function()
+{
+	action(false);
+});
+
+// False
+action_button_split.addEventListener('click', function()
+{
+	action(true);
 });
