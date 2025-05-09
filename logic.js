@@ -9,6 +9,7 @@ const _c_preview_hide = document.getElementById('_c_preview_hide');
 const _c_preview_wipe = document.getElementById('_c_preview_wipe');
 const _c_preview_reset = document.getElementById('_c_preview_reset');
 const _c_preview_delete = document.getElementById('_c_preview_delete');
+const _c_preview_rotate = document.getElementById('_c_preview_rotate');
 const config_container = document.getElementById('config_container');
 const multipage_help = document.getElementById('multipage_help');
 const multipage_prev = document.getElementById('multipage_prev');
@@ -79,11 +80,22 @@ const CONST_MOBILEZOOMFACTOR = 1.05;
 // Draw, vCanvas into canvas
 function draw()
 {
+	
+
 	// draw pdf
 	context.setTransform(1, 0, 0, 1, 0, 0);
 	context.clearRect(0, 0, canvas.width, canvas.height);
 	context.imageSmoothingEnabled = false;
 	context.setTransform(previewWindow.scale, 0, 0, previewWindow.scale, previewWindow.offsetX, previewWindow.offsetY);
+
+	// apply rotation
+	if(userSelection.rotate[userSelection.current - 1] != 0)
+	{
+		context.translate(vCanvas.width / 2, vCanvas.height / 2);
+		context.rotate(userSelection.rotate[userSelection.current - 1] * Math.PI / 2);
+		context.translate(-1 * vCanvas.width / 2, -1 * vCanvas.height / 2);
+	}
+
 	context.drawImage(vCanvas, 0, 0);
 
 	// draw removal
@@ -240,6 +252,7 @@ var userSelection =
 	current: 1,
 	total: 1,
 	pages: [0,],
+	rotate: [0,],
 };
 
 // Resets user selection
@@ -250,6 +263,7 @@ function resetUserSelection(len)
 		current: 1,
 		total: len,
 		pages: Array.from({length: len}, () => (1)),
+		rotate: Array.from({length: len}, () => (0)),
 	};
 }
 
@@ -395,6 +409,7 @@ _c_preview_reset.addEventListener('click', ()=>
 	for(let i = 1; i <= num_pages; i++)
 	{
 		userSelection.pages[i - 1] = 1;
+		userSelection.rotate[i - 1] = 0;
 	}
 
 	draw();
@@ -404,6 +419,14 @@ _c_preview_reset.addEventListener('click', ()=>
 _c_preview_delete.addEventListener('click', ()=>
 {
 	userSelection.pages[userSelection.current - 1] = userSelection.pages[userSelection.current - 1] == 0 ? 1 : 0;
+
+	draw();
+})
+
+// Rotate current page
+_c_preview_rotate.addEventListener('click', ()=>
+{
+	userSelection.rotate[userSelection.current - 1] = (userSelection.rotate[userSelection.current - 1] + 1) % 4;
 
 	draw();
 })
@@ -453,7 +476,7 @@ function action(split)
 		const {PDFDocument} = PDFLib;
 		const pdfDoc = await PDFDocument.load(fileBuffer);
 
-		// Loop through all pages and delete
+		// Loop through all pages and delete and rotate
 		for(let i = num_pages; i >= 1; i--)
 		{
 			// Delete
@@ -461,12 +484,19 @@ function action(split)
 			{
 				pdfDoc.removePage(i - 1);
 			}
+			// Rotate
+			else if(userSelection.rotate[i - 1] != 0)
+			{
+				const pageToRotate = (pdfDoc.getPages())[i - 1];
+				pageToRotate.setRotation(PDFLib.degrees(userSelection.rotate[i - 1] * 90));
+			}
 		}
 
 		// Split to single pages
 		if(split == true)
 		{
 			const num = pdfDoc.getPageCount();
+			// Abort zero pages
 			if(num == 0)
 			{
 				outputElement.value += "Aborting download of zero pages\n";
@@ -494,22 +524,35 @@ function action(split)
 		else
 		{
 			const num = pdfDoc.getPageCount();
+			// Abort zero pages
 			if(num == 0)
 			{
 				outputElement.value += "Aborting download of zero pages\n";
 				resizeOutput(outputElement);
 				return;
 			}
+			// Abort no deletion no rotation
 			else if(num == userSelection.total)
 			{
-				outputElement.value += "Aborting download of unchanged document\n";
-				resizeOutput(outputElement);
-				return;
+				let pendingRotate = false;
+				for(const rotation of userSelection.rotate)
+				{
+					if(rotation != 0)
+					{
+						pendingRotate = true;
+						break;
+					}
+				}
+				if(pendingRotate == false)
+				{
+					outputElement.value += "Aborting download of unchanged document\n";
+					resizeOutput(outputElement);
+					return;
+				}
 			}
 
-			newBytes = await pdfDoc.save();
-
 			// Make bob
+			newBytes = await pdfDoc.save();
 			const bob = new Blob([newBytes], {type: 'application/pdf'});
 			const link = document.createElement('a');
 			link.href = URL.createObjectURL(bob);
@@ -526,7 +569,7 @@ action_button_trim.addEventListener('click', function()
 	action(false);
 });
 
-// False
+// Split
 action_button_split.addEventListener('click', function()
 {
 	action(true);
